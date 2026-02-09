@@ -127,8 +127,9 @@ deploy_dev:
     - if: $CI_COMMIT_BRANCH
 
 # =====================================================
-# DEPLOY PROD — manual, post-merge, same cluster
+# DEPLOY PROD 
 # =====================================================
+
 deploy_prod:
   stage: deploy
   image:
@@ -174,5 +175,5 @@ deploy_prod:
         --set image.repository="$IMAGE_PATH" \
         --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_PROD"
-  rules:
+  rules:        ## — manual, post-merge 
     - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"'

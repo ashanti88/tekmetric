@@ -20,10 +20,12 @@ spec:
       imagePullSecrets:
         {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
+
       containers:
         - name: backend
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
@@ -52,6 +54,15 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 6
+
+          {{- if .Values.securityContext.enabled }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.securityContext.allowPrivilegeEscalation | default false }}
+            readOnlyRootFilesystem: {{ .Values.securityContext.readOnlyRootFilesystem | default false }}
+            capabilities:
+              drop:
+                - ALL
+          {{- end }}
 
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
