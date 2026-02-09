@@ -96,7 +96,7 @@ deploy_dev:
         --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_DEV"
   rules:
-    - if: '$CI_COMMIT_BRANCH 
+    - if: '$CI_COMMIT_BRANCH'
 
 deploy_prod:
   stage: deploy
