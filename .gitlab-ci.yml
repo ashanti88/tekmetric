@@ -27,7 +27,7 @@ variables:
 # -----------------------
 # Build + push to GAR (tag-only)
 # -----------------------
-build_backend_image:
+build:
   stage: build
   image: docker:27
   services: [docker:27-dind]
@@ -82,7 +82,6 @@ deploy_dev:
   image:
     name: alpine/helm:3.15.4
     entrypoint: [""]
-  needs: [build_backend_image]
   environment: { name: dev }
   resource_group: dev
   script:
@@ -97,15 +96,14 @@ deploy_dev:
         --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_DEV"
   rules:
-    # Auto-run only when kubeconfig is actually available
-    - if: '$CI_COMMIT_BRANCH && $KUBECONFIG_B64'
+    - if: '$CI_COMMIT_BRANCH 
 
 deploy_prod:
   stage: deploy
   image:
     name: alpine/helm:3.15.4
     entrypoint: [""]
-  needs: [build_backend_image]
+  needs: [build]
   environment: { name: production }
   resource_group: production
   script:
@@ -123,4 +121,4 @@ deploy_prod:
   allow_failure: false
   rules:
     # Only post-merge pipeline on master AND only if prod kubeconfig is available
-    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push" && $KUBECONFIG_B64_PROD'
+    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"'
