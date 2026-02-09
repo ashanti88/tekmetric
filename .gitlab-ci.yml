@@ -154,7 +154,6 @@ deploy_prod:
   script:
     - |
       require() { eval "v=\${$1:-}"; [ -n "$v" ] || { echo "Missing $1"; exit 1; }; }
-
       require GCP_PROJECT_ID
       require GCP_SA_KEY
       require GKE_REGION

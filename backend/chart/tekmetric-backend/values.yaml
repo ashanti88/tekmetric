@@ -1,11 +1,6 @@
 replicaCount: 1
 
 image:
-  repository: 139940731876.dkr.ecr.us-east-2.amazonaws.com/tekmetric-backend
-  tag: "f71fbe3"
-  pullPolicy: IfNotPresent
-
-image:
   repository: ""
   tag: ""
   pullPolicy: IfNotPresent

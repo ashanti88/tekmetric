@@ -21,6 +21,11 @@ spec:
         {{- toYaml .Values.imagePullSecrets | nindent 8 }}
       {{- end }}
 
+      {{- $port := (.Values.service.targetPort | default 8080) }}
+      {{- if or (not $port) (eq (int $port) 0) }}
+      {{- fail "service.targetPort must be a valid port (1-65535)" }}
+      {{- end }}
+
       containers:
         - name: backend
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -28,19 +33,19 @@ spec:
 
           ports:
             - name: http
-              containerPort: {{ .Values.service.targetPort }}
+              containerPort: {{ $port }}
 
           startupProbe:
             tcpSocket:
-              port: {{ .Values.service.targetPort }}
+              port: {{ $port }}
             periodSeconds: 2
             timeoutSeconds: 1
             failureThreshold: 60
 
           readinessProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
-              port: {{ .Values.service.targetPort }}
+              path: {{ .Values.probes.path | default "/api/welcome" }}
+              port: {{ $port }}
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 2
@@ -48,8 +53,8 @@ spec:
 
           livenessProbe:
             httpGet:
-              path: {{ .Values.probes.path }}
-              port: {{ .Values.service.targetPort }}
+              path: {{ .Values.probes.path | default "/api/welcome" }}
+              port: {{ $port }}
             initialDelaySeconds: 15
             periodSeconds: 10
             timeoutSeconds: 2
