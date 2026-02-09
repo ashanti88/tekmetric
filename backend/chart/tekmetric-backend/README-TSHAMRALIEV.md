@@ -2,6 +2,7 @@ This repository contains a production-ready containerized backend application de
 
 ## PROJECT STRUCTURE
 
+```text
 .
 ├── backend/                    # Java backend service
 │   ├── Dockerfile              # Container build definition
@@ -18,6 +19,7 @@ This repository contains a production-ready containerized backend application de
 ├── .gitlab-ci.yml               # GitLab CI/CD pipeline definition
 ├── .gitignore
 └── README.md
+```
 
 Assignment Overview – What Was Done
 
