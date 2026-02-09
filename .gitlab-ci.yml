@@ -104,11 +104,6 @@ deploy_dev:
   rules:
     - if: $CI_COMMIT_BRANCH
 
-deploy_staging:
-  stage: deploy
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"'
-
 # PROD MANUAL DEPLOYMENT (intentionally empty)
 deploy_prod:
   stage: deploy
