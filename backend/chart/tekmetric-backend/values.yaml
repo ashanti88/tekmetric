@@ -1,0 +1,24 @@
+replicaCount: 1
+
+image:
+  repository: 139940731876.dkr.ecr.us-east-2.amazonaws.com/tekmetric-backend
+  tag: "f71fbe3"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+probes:
+  path: /api/welcome
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

@@ -12,3 +12,82 @@ qa/playwright/.cache/
 
 # ignoring the .idea folder
 .idea
+
+
+############################
+# OS / Editor junk
+############################
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*.log
+
+############################
+# Java / Maven
+############################
+# Build output
+target/
+*.class
+
+# Maven local files
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+############################
+# Node / Frontend / QA
+############################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+############################
+# Python (data folder)
+############################
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+
+############################
+# Test artifacts
+############################
+test-results/
+playwright-report/
+coverage/
+
+############################
+# Docker
+############################
+*.tar
+docker-compose.override.yml
+
+############################
+# Helm / Kubernetes
+############################
+charts/
+*.tgz
+
+############################
+# Secrets (never commit)
+############################
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.keystore
+
+############################
+# Misc
+############################
+logs/
+tmp/
+.env.local

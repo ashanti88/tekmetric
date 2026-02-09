@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tekmetric-backend
+  namespace: tekmetric
+  labels:
+    app: tekmetric-backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tekmetric-backend
+  template:
+    metadata:
+      labels:
+        app: tekmetric-backend
+    spec:
+      imagePullSecrets:
+        - name: ecr-pull
+      containers:
+        - name: backend
+          image: 139940731876.dkr.ecr.us-east-2.amazonaws.com/tekmetric-backend:f71fbe3
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+
+          startupProbe:
+            tcpSocket:
+              port: 8080
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 60
+
+          readinessProbe:
+            httpGet:
+              path: /api/welcome
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+
+          livenessProbe:
+            httpGet:
+              path: /api/welcome
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 6
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tekmetric-backend
+  namespace: tekmetric
+spec:
+  selector:
+    app: tekmetric-backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+  type: ClusterIP

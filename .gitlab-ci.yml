@@ -1,0 +1,145 @@
+stages: [validate, build, deploy]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
+
+variables:
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+  HELM_TIMEOUT_DEV: "5m"
+  HELM_TIMEOUT_PROD: "10m"
+
+# -----------------------
+# Validate chart
+# -----------------------
+# helm_validate:
+#   stage: validate
+#   image: alpine/helm:3.15.4
+#   script:
+#     - |
+#       require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
+#       require HELM_RELEASE
+#       require HELM_CHART_PATH
+#       require HELM_NAMESPACE
+#     - helm lint "$HELM_CHART_PATH"
+#     - helm template "$HELM_RELEASE" "$HELM_CHART_PATH" -n "$HELM_NAMESPACE" >/dev/null
+#   rules:
+#     - if: $CI_COMMIT_BRANCH
+
+# -----------------------
+# Build + push to GAR, capture digest
+# -----------------------
+build_backend_image:
+  stage: build
+  image: google/cloud-sdk:slim
+  services: [docker:27-dind]
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_HOST: "tcp://docker:2376"
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_BUILDKIT: "1"
+  script:
+    - |
+      require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
+      require GCP_PROJECT_ID
+      require GCP_SA_KEY_B64
+      require GAR_REGISTRY
+      require GAR_REPO
+      require IMAGE_NAME
+
+      echo "$GCP_SA_KEY_B64" | base64 -d > /tmp/sa.json
+      gcloud auth activate-service-account --key-file=/tmp/sa.json
+      gcloud config set project "$GCP_PROJECT_ID"
+      gcloud auth configure-docker "$GAR_REGISTRY" --quiet
+
+      IMAGE_PATH="$GAR_REGISTRY/$GAR_REPO/$IMAGE_NAME"
+      echo "IMAGE_PATH=$IMAGE_PATH"
+
+      cd backend
+      docker build --pull -t "$IMAGE_PATH:$IMAGE_TAG" .
+      docker push "$IMAGE_PATH:$IMAGE_TAG"
+
+      DIGEST="$(gcloud artifacts docker images describe "$IMAGE_PATH:$IMAGE_TAG" \
+        --format='get(image_summary.digest)')"
+      test -n "$DIGEST" || (echo "Failed to resolve digest" && exit 1)
+
+      {
+        echo "IMAGE_TAG=$IMAGE_TAG"
+        echo "IMAGE_PATH=$IMAGE_PATH"
+        echo "IMAGE_DIGEST=$DIGEST"
+      } > ../build.env
+  artifacts:
+    reports:
+      dotenv: build.env
+  rules:
+    - if: $CI_COMMIT_BRANCH
+
+# -----------------------
+# Deploy DEV (any commit, manual)
+# -----------------------
+deploy_dev:
+  stage: deploy
+  image: alpine/helm:3.15.4
+  needs: [build_backend_image]
+  environment: { name: dev }
+  resource_group: dev
+  when: manual
+  script:
+    - |
+      require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
+      kubeconfig() {
+        require KUBECONFIG_B64
+        mkdir -p ~/.kube
+        echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
+        chmod 600 ~/.kube/config
+      }
+
+      require HELM_RELEASE
+      require HELM_CHART_PATH
+      require HELM_NAMESPACE
+      kubeconfig
+
+      helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_PATH" \
+        -n "$HELM_NAMESPACE" --create-namespace \
+        --set image.repository="$IMAGE_PATH" \
+        --set image.digest="$IMAGE_DIGEST" \
+        --set image.tag="" \
+        --atomic --wait --timeout "$HELM_TIMEOUT_DEV"
+  rules:
+    - if: $CI_COMMIT_BRANCH
+
+# -----------------------
+# Deploy PROD (only after merge to main)
+# -----------------------
+deploy_prod:
+  stage: deploy
+  image: alpine/helm:3.15.4
+  needs: [build_backend_image]
+  environment: { name: production }
+  resource_group: production
+  when: manual
+  script:
+    - |
+      require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
+      kubeconfig() {
+        require KUBECONFIG_B64_PROD
+        mkdir -p ~/.kube
+        echo "$KUBECONFIG_B64_PROD" | base64 -d > ~/.kube/config
+        chmod 600 ~/.kube/config
+      }
+
+      require HELM_RELEASE
+      require HELM_CHART_PATH
+      require HELM_NAMESPACE
+      kubeconfig
+
+      helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_PATH" \
+        -n "$HELM_NAMESPACE" --create-namespace \
+        --set image.repository="$IMAGE_PATH" \
+        --set image.digest="$IMAGE_DIGEST" \
+        --set image.tag="" \
+        --atomic --wait --timeout "$HELM_TIMEOUT_PROD"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
