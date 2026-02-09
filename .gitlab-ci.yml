@@ -107,6 +107,26 @@ deploy_dev:
 # PROD MANUAL DEPLOYMENT (intentionally empty)
 deploy_prod:
   stage: deploy
+  image: alpine/helm:3.15.4
+  needs: [build_backend_image]
+  environment: { name: production }
+  resource_group: production
   when: manual
+  script:
+    - |
+      require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
+      require KUBECONFIG_B64_PROD
+
+      mkdir -p ~/.kube
+      echo "$KUBECONFIG_B64_PROD" | base64 -d > ~/.kube/config
+      chmod 600 ~/.kube/config
+
+      helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_PATH" \
+        -n "$HELM_NAMESPACE" --create-namespace \
+        --set image.repository="$IMAGE_PATH" \
+        --set image.digest="$IMAGE_DIGEST" \
+        --set image.tag="" \
+        --atomic --wait --timeout "$HELM_TIMEOUT_PROD"
   rules:
+    # your repo default branch is master per logs
     - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"'
