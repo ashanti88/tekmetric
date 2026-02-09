@@ -79,21 +79,14 @@ build_backend_image:
 # -----------------------
 deploy_dev:
   stage: deploy
-  image: alpine/helm:3.15.4
+  image:
+    name: alpine/helm:3.15.4
+    entrypoint: [""]
   needs: [build_backend_image]
   environment: { name: dev }
   resource_group: dev
-  when: manual
   script:
     - |
-      require() { eval "val=\${$1:-}"; [ -n "$val" ] || { echo "Missing $1"; exit 1; }; }
-      require KUBECONFIG_B64
-      require IMAGE_PATH
-      require IMAGE_TAG
-      require HELM_RELEASE
-      require HELM_CHART_PATH
-      require HELM_NAMESPACE
-
       mkdir -p ~/.kube
       echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
       chmod 600 ~/.kube/config
@@ -104,28 +97,19 @@ deploy_dev:
         --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_DEV"
   rules:
-    - if: $CI_COMMIT_BRANCH
+    # Auto-run only when kubeconfig is actually available
+    - if: '$CI_COMMIT_BRANCH && $KUBECONFIG_B64'
 
-# -----------------------
-# Deploy PROD (post-merge pipeline on master)
-# -----------------------
 deploy_prod:
   stage: deploy
-  image: alpine/helm:3.15.4
+  image:
+    name: alpine/helm:3.15.4
+    entrypoint: [""]
   needs: [build_backend_image]
   environment: { name: production }
   resource_group: production
-  when: manual
   script:
     - |
-      require() { eval "val=\${$1:-}"; [ -n "$val" ] || { echo "Missing $1"; exit 1; }; }
-      require KUBECONFIG_B64_PROD
-      require IMAGE_PATH
-      require IMAGE_TAG
-      require HELM_RELEASE
-      require HELM_CHART_PATH
-      require HELM_NAMESPACE
-
       mkdir -p ~/.kube
       echo "$KUBECONFIG_B64_PROD" | base64 -d > ~/.kube/config
       chmod 600 ~/.kube/config
@@ -135,5 +119,8 @@ deploy_prod:
         --set image.repository="$IMAGE_PATH" \
         --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_PROD"
+  when: manual
+  allow_failure: false
   rules:
-    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"'
+    # Only post-merge pipeline on master AND only if prod kubeconfig is available
+    - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push" && $KUBECONFIG_B64_PROD'
