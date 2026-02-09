@@ -91,11 +91,14 @@ deploy_dev:
   resource_group: dev
   before_script:
     - apt-get update
-    - apt-get install -y curl ca-certificates kubectl
+    - apt-get install -y curl ca-certificates kubectl google-cloud-cli-gke-gcloud-auth-plugin
+    - export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+    - gke-gcloud-auth-plugin --version
     - curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     - helm version
     - kubectl version --client=true
     - gcloud --version
+
   script:
     - |
       require() { eval "v=\${$1:-}"; [ -n "$v" ] || { echo "Missing $1"; exit 1; }; }
@@ -139,11 +142,14 @@ deploy_prod:
   allow_failure: false
   before_script:
     - apt-get update
-    - apt-get install -y curl ca-certificates kubectl
+    - apt-get install -y curl ca-certificates kubectl google-cloud-cli-gke-gcloud-auth-plugin
+    - export USE_GKE_GCLOUD_AUTH_PLUGIN=True
+    - gke-gcloud-auth-plugin --version
     - curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
     - helm version
     - kubectl version --client=true
     - gcloud --version
+
   script:
     - |
       require() { eval "v=\${$1:-}"; [ -n "$v" ] || { echo "Missing $1"; exit 1; }; }
