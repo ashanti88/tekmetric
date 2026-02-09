@@ -2,18 +2,22 @@ This repository contains a production-ready containerized backend application de
 
 ## PROJECT STRUCTURE
 
-├── backend/                 # Java backend service
-│   ├── Dockerfile
-│   ├── chart/               # Helm chart for Kubernetes deployment
-│   │   └── tekmetric-backend
-│   ├── src/                 # Application source code
-│   └── pom.xml
-├── frontend/                
-├── qa/                      
-├── ml/                     
-├── sre/       
-├── .gitlab-ci.yml           # GitLab CI/CD template      
-└── .gitignore
+.
+├── backend/                    # Java backend service
+│   ├── Dockerfile              # Container build definition
+│   ├── pom.xml                 # Maven configuration
+│   ├── src/                    # Application source code
+│   ├── chart/                  # Helm chart for Kubernetes deployment
+│   │   └── tekmetric-backend/  # Backend Helm chart
+│   └── frontend/               # (Optional) Frontend assets
+│
+├── qa/                          # QA-related resources (tests, configs)
+├── ml/                          # ML-related components (reserved/future)
+├── sre/                         # SRE / infrastructure-related assets
+│
+├── .gitlab-ci.yml               # GitLab CI/CD pipeline definition
+├── .gitignore
+└── README.md
 
 Assignment Overview – What Was Done
 
