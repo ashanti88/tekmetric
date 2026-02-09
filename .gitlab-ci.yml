@@ -44,13 +44,13 @@ build_backend_image:
     - |
       require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
       require GCP_PROJECT_ID
-      require GCP_SA_KEY_B64
+      require GCP_SA_KEY
       require GAR_REGISTRY
       require GAR_REPO
       require IMAGE_NAME
 
       echo "$GCP_SA_KEY_B64" | base64 -d > /tmp/sa.json
-      gcloud auth activate-service-account --key-file=/tmp/sa.json
+      gcloud auth activate-service-account --key-file="$GCP_SA_KEY"
       gcloud config set project "$GCP_PROJECT_ID"
       gcloud auth configure-docker "$GAR_REGISTRY" --quiet
 
