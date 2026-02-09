@@ -34,16 +34,17 @@ build_backend_image:
   services:
     - docker:27-dind
   variables:
+    DOCKER_TLS_CERTDIR: "/certs"
     DOCKER_HOST: "tcp://docker:2376"
     DOCKER_TLS_VERIFY: "1"
     DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+    DOCKER_BUILDKIT: "1"
   before_script:
-    - apt-get update
-    - apt-get install -y curl ca-certificates kubectl google-cloud-cli-gke-gcloud-auth-plugin
-    - curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-    - gke-gcloud-auth-plugin --version
-    - kubectl version --client=true
-    - helm version
+    - apk add --no-cache curl python3 py3-crcmod libc6-compat openssl
+    - curl -sSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-472.0.0-linux-x86_64.tar.gz -o /tmp/gcloud.tgz
+    - tar -C /opt -xzf /tmp/gcloud.tgz
+    - /opt/google-cloud-sdk/install.sh --quiet
+    - export PATH="/opt/google-cloud-sdk/bin:$PATH"
     - gcloud --version
   script:
     - |
