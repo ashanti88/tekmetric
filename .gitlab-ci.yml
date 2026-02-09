@@ -8,17 +8,26 @@ workflow:
 variables:
   IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
 
-  # Non-sensitive defaults
+  # ---------- NON-SENSITIVE DEFAULTS (OK IN YAML) ----------
+  # GAR
   GAR_REGISTRY: "us-central1-docker.pkg.dev"
   GAR_REPO: "$GCP_PROJECT_ID/tekmetric"
   IMAGE_NAME: "tekmetric-backend"
 
-  # Helm defaults
+  # Helm
   HELM_RELEASE: "tekmetric-backend"
   HELM_CHART_PATH: "./backend/chart/tekmetric-backend"
   HELM_NAMESPACE: "tekmetric"
   HELM_TIMEOUT_DEV: "5m"
   HELM_TIMEOUT_PROD: "10m"
+
+  # GKE (set these in YAML or GitLab vars — non-sensitive either way)
+  # Choose ONE style: region OR zone. This template uses REGION.
+  GKE_REGION_DEV: "us-central1"
+  GKE_CLUSTER_DEV: "tekmetric-dev"
+
+  GKE_REGION_PROD: "us-central1"
+  GKE_CLUSTER_PROD: "tekmetric-prod"
 
   # Docker
   DOCKER_TLS_CERTDIR: "/certs"
@@ -27,7 +36,7 @@ variables:
 # -----------------------
 # Build + push to GAR (tag-only)
 # -----------------------
-build:
+build_backend_image:
   stage: build
   image: docker:27
   services: [docker:27-dind]
@@ -36,7 +45,7 @@ build:
     DOCKER_TLS_VERIFY: "1"
     DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
   before_script:
-    # install gcloud into docker:27 (alpine)
+    # Install gcloud into docker:27 (alpine)
     - apk add --no-cache curl python3 py3-crcmod libc6-compat openssl
     - curl -sSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-472.0.0-linux-x86_64.tar.gz -o /tmp/gcloud.tgz
     - tar -C /opt -xzf /tmp/gcloud.tgz
@@ -75,20 +84,40 @@ build:
     - if: $CI_COMMIT_BRANCH
 
 # -----------------------
-# Deploy DEV (any commit, manual)
+# Deploy DEV (auto) via GKE get-credentials
 # -----------------------
 deploy_dev:
   stage: deploy
-  image:
-    name: alpine/helm:3.15.4
-    entrypoint: [""]
+  image: google/cloud-sdk:slim
+  needs: [build_backend_image]
   environment: { name: dev }
   resource_group: dev
+  before_script:
+    - apt-get update
+    - apt-get install -y curl ca-certificates
+    # Install Helm
+    - curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    - helm version
+    - gcloud --version
   script:
     - |
-      mkdir -p ~/.kube
-      echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
-      chmod 600 ~/.kube/config
+      require() { eval "val=\${$1:-}"; [ -n "$val" ] || { echo "Missing $1"; exit 1; }; }
+
+      require GCP_PROJECT_ID
+      require GCP_SA_KEY
+      require GKE_REGION_DEV
+      require GKE_CLUSTER_DEV
+      require IMAGE_PATH
+      require IMAGE_TAG
+      require HELM_RELEASE
+      require HELM_CHART_PATH
+      require HELM_NAMESPACE
+
+      gcloud auth activate-service-account --key-file="$GCP_SA_KEY"
+      gcloud config set project "$GCP_PROJECT_ID"
+
+      # Fetch kubeconfig for the cluster (no base64 kubeconfig vars needed)
+      gcloud container clusters get-credentials "$GKE_CLUSTER_DEV" --region "$GKE_REGION_DEV"
 
       helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_PATH" \
         -n "$HELM_NAMESPACE" --create-namespace \
@@ -96,29 +125,49 @@ deploy_dev:
         --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_DEV"
   rules:
-    - if: '$CI_COMMIT_BRANCH'
+    # Auto deploy on any branch pipeline (adjust if you want only master/develop)
+    - if: $CI_COMMIT_BRANCH
 
+# -----------------------
+# Deploy PROD (manual) only post-merge to master (push pipeline)
+# -----------------------
 deploy_prod:
   stage: deploy
-  image:
-    name: alpine/helm:3.15.4
-    entrypoint: [""]
-  needs: [build]
+  image: google/cloud-sdk:slim
+  needs: [build_backend_image]
   environment: { name: production }
   resource_group: production
+  when: manual
+  allow_failure: false
+  before_script:
+    - apt-get update
+    - apt-get install -y curl ca-certificates
+    - curl -sSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+    - helm version
+    - gcloud --version
   script:
     - |
-      mkdir -p ~/.kube
-      echo "$KUBECONFIG_B64_PROD" | base64 -d > ~/.kube/config
-      chmod 600 ~/.kube/config
+      require() { eval "val=\${$1:-}"; [ -n "$val" ] || { echo "Missing $1"; exit 1; }; }
+
+      require GCP_PROJECT_ID
+      require GCP_SA_KEY
+      require GKE_REGION_PROD
+      require GKE_CLUSTER_PROD
+      require IMAGE_PATH
+      require IMAGE_TAG
+      require HELM_RELEASE
+      require HELM_CHART_PATH
+      require HELM_NAMESPACE
+
+      gcloud auth activate-service-account --key-file="$GCP_SA_KEY"
+      gcloud config set project "$GCP_PROJECT_ID"
+
+      gcloud container clusters get-credentials "$GKE_CLUSTER_PROD" --region "$GKE_REGION_PROD"
 
       helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_PATH" \
         -n "$HELM_NAMESPACE" --create-namespace \
         --set image.repository="$IMAGE_PATH" \
         --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_PROD"
-  when: manual
-  allow_failure: false
   rules:
-    # Only post-merge pipeline on master AND only if prod kubeconfig is available
     - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"'
