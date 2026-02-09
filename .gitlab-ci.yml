@@ -1,4 +1,4 @@
-stages: [validate, build, deploy]
+stages: [build, deploy]
 
 workflow:
   rules:
@@ -13,28 +13,31 @@ variables:
   GAR_REPO: "$GCP_PROJECT_ID/tekmetric"
   IMAGE_NAME: "tekmetric-backend"
 
+  # Helm defaults
   HELM_RELEASE: "tekmetric-backend"
   HELM_CHART_PATH: "./backend/chart/tekmetric-backend"
   HELM_NAMESPACE: "tekmetric"
   HELM_TIMEOUT_DEV: "5m"
   HELM_TIMEOUT_PROD: "10m"
 
+  # Docker
   DOCKER_TLS_CERTDIR: "/certs"
   DOCKER_BUILDKIT: "1"
 
+# -----------------------
+# Build + push to GAR (tag-only)
+# -----------------------
 build_backend_image:
   stage: build
   image: docker:27
   services: [docker:27-dind]
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
     DOCKER_HOST: "tcp://docker:2376"
     DOCKER_TLS_VERIFY: "1"
     DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
-    DOCKER_BUILDKIT: "1"
   before_script:
-    # Install gcloud in Alpine (docker:27 is Alpine-based)
-    - apk add --no-cache bash curl python3 py3-crcmod libc6-compat openssl
+    # install gcloud into docker:27 (alpine)
+    - apk add --no-cache curl python3 py3-crcmod libc6-compat openssl
     - curl -sSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-472.0.0-linux-x86_64.tar.gz -o /tmp/gcloud.tgz
     - tar -C /opt -xzf /tmp/gcloud.tgz
     - /opt/google-cloud-sdk/install.sh --quiet
@@ -43,29 +46,27 @@ build_backend_image:
   script:
     - |
       require() { eval "val=\${$1:-}"; [ -n "$val" ] || { echo "Missing $1"; exit 1; }; }
+
       require GCP_PROJECT_ID
       require GCP_SA_KEY
       require GAR_REGISTRY
+      require GAR_REPO
+      require IMAGE_NAME
 
       gcloud auth activate-service-account --key-file="$GCP_SA_KEY"
       gcloud config set project "$GCP_PROJECT_ID"
       gcloud auth configure-docker "$GAR_REGISTRY" --quiet
 
-      IMAGE_PATH="$GAR_REGISTRY/$GCP_PROJECT_ID/tekmetric/tekmetric-backend"
+      IMAGE_PATH="$GAR_REGISTRY/$GAR_REPO/$IMAGE_NAME"
       echo "IMAGE_PATH=$IMAGE_PATH"
 
       cd backend
-      docker build --pull -t "$IMAGE_PATH:$CI_COMMIT_SHORT_SHA" .
-      docker push "$IMAGE_PATH:$CI_COMMIT_SHORT_SHA"
-
-      DIGEST="$(gcloud artifacts docker images describe "$IMAGE_PATH:$CI_COMMIT_SHORT_SHA" \
-        --format='get(image_summary.digest)')"
-      test -n "$DIGEST" || (echo "Failed to resolve digest" && exit 1)
+      docker build --pull -t "$IMAGE_PATH:$IMAGE_TAG" .
+      docker push "$IMAGE_PATH:$IMAGE_TAG"
 
       {
-        echo "IMAGE_TAG=$CI_COMMIT_SHORT_SHA"
+        echo "IMAGE_TAG=$IMAGE_TAG"
         echo "IMAGE_PATH=$IMAGE_PATH"
-        echo "IMAGE_DIGEST=$DIGEST"
       } > ../build.env
   artifacts:
     reports:
@@ -73,7 +74,9 @@ build_backend_image:
   rules:
     - if: $CI_COMMIT_BRANCH
 
-
+# -----------------------
+# Deploy DEV (any commit, manual)
+# -----------------------
 deploy_dev:
   stage: deploy
   image: alpine/helm:3.15.4
@@ -83,13 +86,13 @@ deploy_dev:
   when: manual
   script:
     - |
-      require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
+      require() { eval "val=\${$1:-}"; [ -n "$val" ] || { echo "Missing $1"; exit 1; }; }
+      require KUBECONFIG_B64
       require IMAGE_PATH
-      require IMAGE_DIGEST
+      require IMAGE_TAG
       require HELM_RELEASE
       require HELM_CHART_PATH
       require HELM_NAMESPACE
-      require KUBECONFIG_B64
 
       mkdir -p ~/.kube
       echo "$KUBECONFIG_B64" | base64 -d > ~/.kube/config
@@ -98,13 +101,14 @@ deploy_dev:
       helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_PATH" \
         -n "$HELM_NAMESPACE" --create-namespace \
         --set image.repository="$IMAGE_PATH" \
-        --set image.digest="$IMAGE_DIGEST" \
-        --set image.tag="" \
+        --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_DEV"
   rules:
     - if: $CI_COMMIT_BRANCH
 
-# PROD MANUAL DEPLOYMENT (intentionally empty)
+# -----------------------
+# Deploy PROD (post-merge pipeline on master)
+# -----------------------
 deploy_prod:
   stage: deploy
   image: alpine/helm:3.15.4
@@ -114,8 +118,13 @@ deploy_prod:
   when: manual
   script:
     - |
-      require() { test -n "${!1:-}" || (echo "Missing $1" && exit 1); }
+      require() { eval "val=\${$1:-}"; [ -n "$val" ] || { echo "Missing $1"; exit 1; }; }
       require KUBECONFIG_B64_PROD
+      require IMAGE_PATH
+      require IMAGE_TAG
+      require HELM_RELEASE
+      require HELM_CHART_PATH
+      require HELM_NAMESPACE
 
       mkdir -p ~/.kube
       echo "$KUBECONFIG_B64_PROD" | base64 -d > ~/.kube/config
@@ -124,9 +133,7 @@ deploy_prod:
       helm upgrade --install "$HELM_RELEASE" "$HELM_CHART_PATH" \
         -n "$HELM_NAMESPACE" --create-namespace \
         --set image.repository="$IMAGE_PATH" \
-        --set image.digest="$IMAGE_DIGEST" \
-        --set image.tag="" \
+        --set image.tag="$IMAGE_TAG" \
         --atomic --wait --timeout "$HELM_TIMEOUT_PROD"
   rules:
-    # your repo default branch is master per logs
     - if: '$CI_COMMIT_BRANCH == "master" && $CI_PIPELINE_SOURCE == "push"'
